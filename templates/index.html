@@ -1,0 +1,339 @@
+{% extends "layout.html" %}
+
+{% block title %}GDACS Alerts | Environmental Catastrophe Detection{% endblock %}
+
+{% block content %}
+<div class="section-header">
+    <h1>Real-time GDACS Alerts</h1>
+    <p class="lead">Live monitoring and detection of environmental incidents</p>
+    <div class="last-updated">
+        <span>Last updated: {{ last_updated }}</span>
+        <button id="refresh-data" class="btn btn-primary btn-sm">
+            <i class="fas fa-sync-alt me-1"></i> Refresh Data
+        </button>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <!-- Overall Statistics -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="fas fa-chart-line header-icon"></i>
+                <h2>Overall Statistics</h2>
+            </div>
+            <div class="card-body">
+                <div class="row metrics-row">
+                    <div class="col-md-3 col-sm-6 mb-4 mb-md-0">
+                        <div class="metric-card">
+                            <i class="fas fa-bell metric-card-icon"></i>
+                            <h3>Live Events</h3>
+                            <h2>{{ active_count }}</h2>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6 mb-4 mb-md-0">
+                        <div class="metric-card">
+                            <i class="fas fa-exclamation-circle metric-card-icon"></i>
+                            <h3>High Severity</h3>
+                            <h2>{{ high_severity_count }}</h2>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6 mb-4 mb-md-0">
+                        <div class="metric-card">
+                            <i class="fas fa-flag metric-card-icon"></i>
+                            <h3>Countries</h3>
+                            <h2>{{ countries_count }}</h2>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <div class="metric-card">
+                            <i class="fas fa-tags metric-card-icon"></i>
+                            <h3>Event Types</h3>
+                            <h2>{{ event_types_count }}</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- GDACS Live Incident Map -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="fas fa-map-marked-alt header-icon"></i>
+                <h2>GDACS Live Incident Map</h2>
+            </div>
+            <div class="card-body p-0 position-relative">
+                <div id="map-container">
+                    {{ map_html|safe }}
+                </div>
+            </div>
+        </div>
+
+        <!-- High-Priority Live Alerts -->
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-exclamation-triangle header-icon"></i>
+                <h2>High-Priority Live Alerts</h2>
+            </div>
+            <div class="card-body">
+                {% if high_severity %}
+                    {% for event in high_severity %}
+                        <div class="alert alert-danger mb-3">
+                            <h4>
+                                {% if event.event_type == 'Earthquake' %}
+                                    <i class="fas fa-bolt"></i>
+                                {% elif event.event_type == 'Tropical Cyclone' %}
+                                    <i class="fas fa-cloud"></i>
+                                {% elif event.event_type == 'Flooding' %}
+                                    <i class="fas fa-water"></i>
+                                {% elif event.event_type == 'Volcano' %}
+                                    <i class="fas fa-fire"></i>
+                                {% elif event.event_type == 'Drought' %}
+                                    <i class="fas fa-sun"></i>
+                                {% elif event.event_type == 'Forest Fire' %}
+                                    <i class="fas fa-fire"></i>
+                                {% elif event.event_type == 'Tsunami' %}
+                                    <i class="fas fa-water"></i>
+                                {% else %}
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                {% endif %}
+                                {{ event.event_type }} detected in {{ event.country }}
+                            </h4>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <p><strong>Detected:</strong> {{ event.detected_at }}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p><strong>Alert Level:</strong> 
+                                        <span class="badge {% if event.alert_level == 'Red' %}bg-danger{% elif event.alert_level == 'Orange' %}bg-warning{% else %}bg-success{% endif %}">
+                                            {{ event.alert_level }}
+                                        </span>
+                                    </p>
+                                </div>
+                            </div>
+                            <p><strong>Description:</strong> {{ event.description[:150] }}...</p>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i> No high severity alerts currently
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <!-- Disaster Assistant -->
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-robot header-icon"></i>
+                <h2>Disaster Assistant</h2>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="location-input" class="form-label">Enter your location:</label>
+                    <div class="input-group">
+                        <input type="text" id="location-input" class="form-control" placeholder="E.g., USA, Europe, Tokyo">
+                        <button class="btn btn-primary" id="location-submit">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                    <div class="form-text">Enter a continent, country, or region</div>
+                </div>
+                
+                <div id="location-info" class="alert alert-info mb-3" style="display: none;">
+                    <div class="d-flex align-items-center mb-2">
+                        <i class="fas fa-map-marker-alt me-2"></i>
+                        <h5 class="mb-0">Your Location</h5>
+                    </div>
+                    <p class="mb-1">Current location: <strong id="current-location"></strong></p>
+                    <p class="mb-0">Nearby disasters: <span class="badge bg-primary" id="nearby-count">0</span></p>
+                </div>
+                
+                <div id="chat-container">
+                    <div id="chat-messages" class="chatbox mb-3">
+                        <div class="bot-message">
+                            Welcome to the Disaster Assistant! Please enter your location to get started.
+                        </div>
+                    </div>
+                    
+                    <div class="input-group mb-3">
+                        <input type="text" id="chat-input" class="form-control" placeholder="Ask about disasters in your area..." disabled>
+                        <button class="btn btn-primary" id="chat-submit" disabled>
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                    
+                    <button id="clear-chat" class="btn btn-sm btn-secondary">
+                        <i class="fas fa-trash-alt me-1"></i> Clear Chat History
+                    </button>
+                </div>
+                
+                <div class="mt-4">
+                    <div class="accordion" id="aboutAssistant">
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseAbout">
+                                    <i class="fas fa-info-circle me-2"></i> About the Disaster Assistant
+                                </button>
+                            </h2>
+                            <div id="collapseAbout" class="accordion-collapse collapse" data-bs-parent="#aboutAssistant">
+                                <div class="accordion-body">
+                                    <p>This AI-powered assistant provides information about active disasters near your location from the Global Disaster Alert and Coordination System (GDACS).</p>
+                                    
+                                    <p>You can ask about:</p>
+                                    <ul>
+                                        <li>Specific disasters in your area</li>
+                                        <li>Safety recommendations</li>
+                                        <li>Details about disaster severity and impact</li>
+                                        <li>Historical disaster information</li>
+                                    </ul>
+                                    
+                                    <p>The assistant uses real-time GDACS data and has a search radius of 500km from your specified location.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    $(document).ready(function() {
+        // Refresh data button
+        $('#refresh-data').click(function() {
+            $('#loading-overlay').show();
+            location.reload();
+        });
+        
+        // Location submission
+        $('#location-submit').click(function() {
+            const location = $('#location-input').val().trim();
+            if (location) {
+                processLocation(location);
+            }
+        });
+        
+        $('#location-input').keypress(function(e) {
+            if (e.which === 13) {
+                const location = $(this).val().trim();
+                if (location) {
+                    processLocation(location);
+                }
+            }
+        });
+        
+        // Chat submission
+        $('#chat-submit').click(function() {
+            sendChatMessage();
+        });
+        
+        $('#chat-input').keypress(function(e) {
+            if (e.which === 13) {
+                sendChatMessage();
+            }
+        });
+        
+        // Clear chat history
+        $('#clear-chat').click(function() {
+            $('#chat-messages').html('<div class="bot-message">Welcome to the Disaster Assistant! Please enter your location to get started.</div>');
+            scrollChatToBottom();
+        });
+        
+        function processLocation(location) {
+            $('#location-submit').prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+            
+            $.ajax({
+                url: '/api/location',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ location: location }),
+                success: function(response) {
+                    $('#location-submit').prop('disabled', false).html('<i class="fas fa-search"></i>');
+                    
+                    if (response.success) {
+                        // Update UI
+                        $('#current-location').text(response.location);
+                        $('#nearby-count').text(response.nearby_count);
+                        $('#location-info').show();
+                        
+                        // Enable chat
+                        $('#chat-input').prop('disabled', false);
+                        $('#chat-submit').prop('disabled', false);
+                        
+                        // Add assistant message
+                        let message;
+                        if (response.nearby_count > 0) {
+                            message = `I've found ${response.nearby_count} active ${response.nearby_count === 1 ? 'disaster' : 'disasters'} near ${response.location}. Ask me for more details!`;
+                        } else {
+                            message = `Good news! I don't see any active disasters near ${response.location}. Feel free to ask me about any other locations or general disaster information.`;
+                        }
+                        
+                        $('#chat-messages').append(`<div class="bot-message">${message}</div>`);
+                        scrollChatToBottom();
+                    } else {
+                        alert(response.message);
+                    }
+                },
+                error: function() {
+                    $('#location-submit').prop('disabled', false).html('<i class="fas fa-search"></i>');
+                    alert('Error processing location. Please try again.');
+                }
+            });
+        }
+        
+        function sendChatMessage() {
+            const message = $('#chat-input').val().trim();
+            if (!message) return;
+            
+            // Add user message to chat
+            $('#chat-messages').append(`<div class="user-message">${message}</div>`);
+            scrollChatToBottom();
+            
+            // Clear input
+            $('#chat-input').val('');
+            
+            // Disable input and show loading
+            $('#chat-input').prop('disabled', true);
+            $('#chat-submit').prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+            
+            // Send to server
+            $.ajax({
+                url: '/api/chat',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ query: message }),
+                success: function(response) {
+                    $('#chat-input').prop('disabled', false);
+                    $('#chat-submit').prop('disabled', false).html('<i class="fas fa-paper-plane"></i>');
+                    
+                    if (response.success) {
+                        // Add assistant response
+                        $('#chat-messages').append(`<div class="bot-message">${response.response}</div>`);
+                        scrollChatToBottom();
+                    } else {
+                        $('#chat-messages').append(`<div class="bot-message">${response.message}</div>`);
+                        scrollChatToBottom();
+                    }
+                },
+                error: function() {
+                    $('#chat-input').prop('disabled', false);
+                    $('#chat-submit').prop('disabled', false).html('<i class="fas fa-paper-plane"></i>');
+                    $('#chat-messages').append(`<div class="bot-message">Sorry, an error occurred. Please try again.</div>`);
+                    scrollChatToBottom();
+                }
+            });
+        }
+        
+        function scrollChatToBottom() {
+            const chatbox = document.getElementById('chat-messages');
+            chatbox.scrollTop = chatbox.scrollHeight;
+        }
+    });
+</script>
+{% endblock %}

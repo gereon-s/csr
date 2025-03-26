@@ -1,0 +1,303 @@
+{% extends "layout.html" %}
+
+{% block title %}Flood Predictions | Environmental Catastrophe Detection{% endblock %}
+
+{% block content %}
+<div class="section-header">
+    <h1>Flood Prediction Analysis</h1>
+    <p class="lead">AI-based flood detection from satellite imagery</p>
+    <div class="last-updated">
+        <span>Latest prediction: {{ last_updated }}</span>
+        <button id="refresh-data" class="btn btn-primary btn-sm">
+            <i class="fas fa-sync-alt me-1"></i> Refresh Data
+        </button>
+    </div>
+</div>
+
+
+<!-- Summary Metrics -->
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fas fa-chart-pie header-icon"></i>
+        <h2>Overall Statistics</h2>
+    </div>
+    <div class="card-body">
+        <div class="row metrics-row">
+            <div class="col-md-3 col-sm-6 mb-4 mb-md-0">
+                <div class="metric-card">
+                    <i class="fas fa-water metric-card-icon"></i>
+                    <h3>Predicted Floods</h3>
+                    <h2>{{ active_floods }}</h2>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6 mb-4 mb-md-0">
+                <div class="metric-card">
+                    <i class="fas fa-percentage metric-card-icon"></i>
+                    <h3>Avg. Confidence</h3>
+                    <h2>{{ "%.1f"|format(avg_confidence * 100) }}%</h2>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6 mb-4 mb-md-0">
+                <div class="metric-card">
+                    <i class="fas fa-expand-alt metric-card-icon"></i>
+                    <h3>Total Area</h3>
+                    <h2>{{ "%.1f"|format(total_area) }} km²</h2>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="metric-card">
+                    <i class="fas fa-chart-line metric-card-icon"></i>
+                    <h3>Avg. Impact</h3>
+                    <h2>{{ "%.1f"|format(avg_impact) }}/10</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Flood Map -->
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fas fa-map-marked-alt header-icon"></i>
+        <h2>Flood Prediction Map</h2>
+    </div>
+    <div class="card-body p-0 position-relative">
+        <div class="p-3 bg-light">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <small class="text-muted">
+                        {{ map_display_message }}
+                    </small>
+                </div>
+                <div class="col-md-6">
+                    <div class="d-flex justify-content-md-end gap-2">
+                        <form id="map-control-form" method="get" class="d-flex gap-2 flex-wrap">
+                            <!-- Keep the existing query parameters -->
+                            {% if request.args.get('page') %}
+                                <input type="hidden" name="page" value="{{ request.args.get('page') }}">
+                            {% endif %}
+                            {% if request.args.get('per_page') %}
+                                <input type="hidden" name="per_page" value="{{ request.args.get('per_page') }}">
+                            {% endif %}
+                            {% if request.args.get('show_only_floods') %}
+                                <input type="hidden" name="show_only_floods" value="{{ request.args.get('show_only_floods') }}">
+                            {% endif %}
+                            
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="use-clustering" name="use_clustering" value="true" 
+                                       {% if use_clustering %}checked{% endif %} onchange="this.form.submit()">
+                                <label class="form-check-label" for="use-clustering">Use clustering</label>
+                            </div>
+                            
+                            <select class="form-select form-select-sm" name="max_points" style="width: auto;" {% if use_clustering %}disabled{% endif %} onchange="this.form.submit()">
+                                <option value="" {% if max_points is none %}selected{% endif %}>Show all points</option>
+                                <option value="100" {% if max_points == 100 %}selected{% endif %}>Limit to ~100 points</option>
+                                <option value="500" {% if max_points == 500 %}selected{% endif %}>Limit to ~500 points</option>
+                                <option value="1000" {% if max_points == 1000 %}selected{% endif %}>Limit to ~1000 points</option>
+                            </select>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="map-container">
+            {{ map_html|safe }}
+        </div>
+    </div>
+</div>
+
+<!-- High Impact Flood Events -->
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fas fa-exclamation-circle header-icon"></i>
+        <h2>High Impact Flood Events</h2>
+    </div>
+    <div class="card-body">
+        {% if high_impact_floods %}
+            {% for event in high_impact_floods %}
+                <div class="alert alert-danger mb-3">
+                    <h4><i class="fas fa-water me-2"></i> Flood detected in Location {{ event.location_id }}</h4>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p>
+                                <strong>Date:</strong> {{ event.date }} | 
+                                <strong>Confidence:</strong> {{ "%.1f"|format(event.confidence * 100) }}%
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <p>
+                                <strong>Impact:</strong> 
+                                <span class="badge bg-danger">{{ "%.1f"|format(event.total_impact) }}/10</span> | 
+                                <strong>Area:</strong> {{ "%.2f"|format(event.affected_area_km2) }} km²
+                            </p>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <p><strong>Environmental Impact:</strong> {{ "%.1f"|format(event.environmental_impact) }}/10</p>
+                        </div>
+                        <div class="col-md-4">
+                            <p><strong>Economic Impact:</strong> {{ "%.1f"|format(event.economic_impact) }}/10</p>
+                        </div>
+                        <div class="col-md-4">
+                            <p><strong>Social Impact:</strong> {{ "%.1f"|format(event.social_impact) }}/10</p>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        {% else %}
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i> No high impact flood events in the selected filters
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Flood Data Table -->
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fas fa-table header-icon"></i>
+        <h2>Flood Prediction Data</h2>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>Location ID</th>
+                        <th>Date</th>
+                        <th>Status</th>
+                        <th>Confidence</th>
+                        <th>Risk Score</th>
+                        <th>Area (km²)</th>
+                        <th>Total Impact</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if flood_data %}
+                        {% for event in flood_data %}
+                            <tr>
+                                <td>{{ event.location_id }}</td>
+                                <td>{{ event.date }}</td>
+                                <td>
+                                    {% if event.predicted_label == 1 %}
+                                        <span class="badge bg-danger">Flood Detected</span>
+                                    {% else %}
+                                        <span class="badge bg-success">No Flood</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ "%.1f"|format(event.confidence * 100) }}%</td>
+                                <td>{{ "%.1f"|format(event.risk_score) }}</td>
+                                <td>{{ "%.2f"|format(event.affected_area_km2) }}</td>
+                                <td>{{ "%.1f"|format(event.total_impact) }}/10</td>
+                            </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center">No flood data available</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Pagination -->
+        {% if total_pages > 1 %}
+            <nav aria-label="Page navigation">
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <p class="mb-0">Showing {{ flood_data|length }} of {{ total_items }} items</p>
+                    <ul class="pagination mb-0">
+                        <li class="page-item {% if current_page == 1 %}disabled{% endif %}">
+                            <a class="page-link" href="{{ url_for('flood_predictions', page=current_page-1, per_page=request.args.get('per_page', 20), show_only_floods='true' if show_only_floods else 'false') }}" aria-label="Previous">
+                                <span aria-hidden="true">&laquo;</span>
+                            </a>
+                        </li>
+                        
+                        {% set start_page = [current_page - 2, 1]|max %}
+                        {% set end_page = [start_page + 4, total_pages]|min %}
+                        {% set start_page = [end_page - 4, 1]|max %}
+                        
+                        {% for page_num in range(start_page, end_page + 1) %}
+                            <li class="page-item {% if page_num == current_page %}active{% endif %}">
+                                <a class="page-link" href="{{ url_for('flood_predictions', page=page_num, per_page=request.args.get('per_page', 20), show_only_floods='true' if show_only_floods else 'false') }}">{{ page_num }}</a>
+                            </li>
+                        {% endfor %}
+                        
+                        <li class="page-item {% if current_page == total_pages %}disabled{% endif %}">
+                            <a class="page-link" href="{{ url_for('flood_predictions', page=current_page+1, per_page=request.args.get('per_page', 20), show_only_floods='true' if show_only_floods else 'false') }}" aria-label="Next">
+                                <span aria-hidden="true">&raquo;</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Download Options -->
+<div class="card">
+    <div class="card-header">
+        <i class="fas fa-download header-icon"></i>
+        <h2>Download Data</h2>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6 mb-3 mb-md-0">
+                <a href="/api/flood-data/csv" class="btn btn-primary w-100">
+                    <i class="fas fa-file-csv me-2"></i> Download CSV
+                </a>
+            </div>
+            <div class="col-md-6">
+                <a href="/api/flood-data/json" class="btn btn-secondary w-100">
+                    <i class="fas fa-file-code me-2"></i> Download JSON
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    $(document).ready(function() {
+        // Refresh data button
+        $('#refresh-data').click(function() {
+            $('#loading-overlay').show();
+            location.reload();
+        });
+        
+        // Fix for checkbox form submission
+        $('#show-only-floods').change(function() {
+            if (!this.checked) {
+                $('<input>').attr({
+                    type: 'hidden',
+                    name: 'show_only_floods',
+                    value: 'false'
+                }).appendTo('#filter-form');
+            }
+        });
+        
+        // Handle clustering toggle to enable/disable max_points dropdown
+        $('#use-clustering').change(function() {
+            $('select[name="max_points"]').prop('disabled', this.checked);
+            
+            if (this.checked) {
+                // If clustering is enabled, remove the max_points parameter
+                $('input[name="max_points"]').remove();
+            }
+        });
+        
+        // Fix for unchecked clustering checkbox
+        $('#map-control-form').submit(function() {
+            if (!$('#use-clustering').is(':checked')) {
+                $('<input>').attr({
+                    type: 'hidden',
+                    name: 'use_clustering',
+                    value: 'false'
+                }).appendTo('#map-control-form');
+            }
+        });
+    });
+</script>
+{% endblock %}
